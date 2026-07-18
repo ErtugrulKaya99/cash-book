@@ -1,6 +1,10 @@
 (function () {
-  var STORAGE_KEY = 'hesap_defteri_hesaplar';
-  var SHARED_KEY = 'hesap_defteri_paylasilan';
+  // ---- Supabase setup ----
+  var SUPABASE_URL = 'https://sjkjntjjnuwvorabjoik.supabase.co';
+  var SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNqa2pudGpqbnV3dm9yYWJqb2lrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODQzMTIzNjcsImV4cCI6MjA5OTg4ODM2N30.ojO1UZpURQEnvMFeScn20bDDhXi0m74KdLjqbECs_ss';
+  var sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+  var SHARED_KEY = 'hesap_defteri_paylasilan'; // "Gelen Defter" (read-only shared view) stays local-only
 
   function todayStr() {
     var d = new Date();
@@ -33,14 +37,6 @@
     var n = parseFloat(normalized);
     return isNaN(n) ? 0 : n;
   }
-  function loadAccounts() {
-    try { var raw = localStorage.getItem(STORAGE_KEY); return raw ? JSON.parse(raw) : []; }
-    catch (e) { return []; }
-  }
-  function saveAccounts(list) {
-    try { localStorage.setItem(STORAGE_KEY, JSON.stringify(list)); return true; }
-    catch (e) { return false; }
-  }
   function loadShared() {
     try { var raw = localStorage.getItem(SHARED_KEY); return raw ? JSON.parse(raw) : null; }
     catch (e) { return null; }
@@ -63,8 +59,13 @@
   function uid() { return Date.now().toString(36) + Math.random().toString(36).slice(2,6); }
 
   var state = {
+    session: null,
+    authScreen: 'login',
+    authEmail: '', authPassword: '', authError: '', authBusy: false,
+    dataLoading: true,
+
     screen: 'main',
-    accounts: loadAccounts(),
+    accounts: [],
     sharedData: loadShared(),
     filterType: 'all',
     expandedId: null,
@@ -78,6 +79,108 @@
 
   var root = document.getElementById('app-root');
   var fileInput = document.getElementById('file-input-hidden');
+
+  // ---------------- Data mapping helpers (Supabase rows <-> internal shape) ----------------
+
+  function mapTransactionRow(t) {
+    return {
+      id: t.id,
+      kind: t.kind,
+      amount: Number(t.amount),
+      date: t.date,
+      note: t.note || '',
+      createdAt: new Date(t.created_at).getTime()
+    };
+  }
+
+  function mapAccountRow(a, txRows) {
+    return {
+      id: a.id,
+      party: a.party,
+      type: a.type,
+      createdAt: new Date(a.created_at).getTime(),
+      hareketler: txRows.filter(function (t) { return t.account_id === a.id; }).map(mapTransactionRow)
+    };
+  }
+
+  async function fetchAllData() {
+    state.dataLoading = true; render();
+    var accRes = await sb.from('accounts').select('*').order('created_at', { ascending: false });
+    if (accRes.error) { state.error = 'Veriler yüklenemedi: ' + accRes.error.message; state.dataLoading = false; render(); return; }
+    var txRes = await sb.from('transactions').select('*');
+    if (txRes.error) { state.error = 'Hareketler yüklenemedi: ' + txRes.error.message; state.dataLoading = false; render(); return; }
+
+    state.accounts = accRes.data.map(function (a) { return mapAccountRow(a, txRes.data); });
+    state.dataLoading = false;
+    state.error = '';
+    render();
+  }
+
+  // ---------------- Auth ----------------
+
+  function renderAuthScreen() {
+    var isLogin = state.authScreen === 'login';
+    root.innerHTML =
+      '<div class="auth-wrap"><div class="auth-card">' +
+        '<div class="auth-title">Cari Hesap Defteri</div>' +
+        '<div class="auth-subtitle">Verilerine her cihazdan erişmek için giriş yap.</div>' +
+        '<div class="auth-tabs">' +
+          '<button id="tab-login" class="' + (isLogin ? 'active' : '') + '">Giriş Yap</button>' +
+          '<button id="tab-signup" class="' + (!isLogin ? 'active' : '') + '">Kayıt Ol</button>' +
+        '</div>' +
+        '<div class="field"><label>E-posta</label><input id="auth-email" type="email" placeholder="ornek@eposta.com"></div>' +
+        '<div class="field"><label>Şifre</label><input id="auth-password" type="password" placeholder="En az 6 karakter"></div>' +
+        (state.authError ? '<div class="err-msg">' + escapeHtml(state.authError) + '</div>' : '') +
+        '<button class="add-btn" id="btn-auth-submit">' + (state.authBusy ? 'Bekleyin...' : (isLogin ? 'Giriş Yap' : 'Kayıt Ol')) + '</button>' +
+        (!isLogin ? '<div class="install-hint">Kayıt olduktan sonra e-postana gelen onay linkine tıklaman gerekebilir.</div>' : '') +
+      '</div></div>';
+
+    document.getElementById('tab-login').onclick = function () { state.authScreen = 'login'; state.authError = ''; render(); };
+    document.getElementById('tab-signup').onclick = function () { state.authScreen = 'signup'; state.authError = ''; render(); };
+    document.getElementById('auth-email').value = state.authEmail;
+    document.getElementById('auth-password').value = state.authPassword;
+    document.getElementById('auth-email').oninput = function (ev) { state.authEmail = ev.target.value; };
+    document.getElementById('auth-password').oninput = function (ev) { state.authPassword = ev.target.value; };
+    document.getElementById('btn-auth-submit').onclick = isLogin ? handleLogin : handleSignup;
+  }
+
+  async function handleLogin() {
+    if (!state.authEmail || !state.authPassword) { state.authError = 'E-posta ve şifre gir.'; render(); return; }
+    state.authBusy = true; state.authError = ''; render();
+    var res = await sb.auth.signInWithPassword({ email: state.authEmail, password: state.authPassword });
+    state.authBusy = false;
+    if (res.error) { state.authError = res.error.message; render(); return; }
+    state.session = res.data.session;
+    await fetchAllData();
+  }
+
+  async function handleSignup() {
+    if (!state.authEmail || !state.authPassword) { state.authError = 'E-posta ve şifre gir.'; render(); return; }
+    if (state.authPassword.length < 6) { state.authError = 'Şifre en az 6 karakter olmalı.'; render(); return; }
+    state.authBusy = true; state.authError = ''; render();
+    var res = await sb.auth.signUp({ email: state.authEmail, password: state.authPassword });
+    state.authBusy = false;
+    if (res.error) { state.authError = res.error.message; render(); return; }
+    if (res.data.session) {
+      state.session = res.data.session;
+      await fetchAllData();
+    } else {
+      state.authScreen = 'login';
+      state.error = '';
+      state.authError = '';
+      state.info = 'Kayıt başarılı. E-postana gelen onay linkine tıkladıktan sonra giriş yapabilirsin.';
+      render();
+    }
+  }
+
+  async function handleLogout() {
+    await sb.auth.signOut();
+    state.session = null;
+    state.accounts = [];
+    render();
+  }
+
+  // ---------------- Derived data ----------------
 
   function accTotals(acc) {
     var toplam = 0, alinan = 0;
@@ -109,7 +212,11 @@
     return { alacakKalan: alacakKalan, verecekKalan: verecekKalan };
   }
 
+  // ---------------- Render ----------------
+
   function render() {
+    if (!state.session) { renderAuthScreen(); return; }
+    if (state.dataLoading) { root.innerHTML = '<div class="auth-wrap"><div class="auth-loading">Yükleniyor...</div></div>'; return; }
     if (state.screen === 'shared') { renderSharedScreen(); return; }
     renderMainScreen();
   }
@@ -222,6 +329,7 @@
     root.innerHTML =
       '<div class="shell">' +
         '<div class="header"><h1>Cari Hesap Defteri</h1><div class="date-today">' + displayDate + '</div></div>' +
+        '<div class="user-bar"><span class="email">' + escapeHtml(state.session.user.email) + '</span><span class="logout-link" id="btn-logout">Çıkış Yap</span></div>' +
         '<div class="tabs">' +
           '<button id="tab-main" class="active">Hesaplarım</button>' +
           '<button id="tab-shared">Gelen Defter</button>' +
@@ -271,6 +379,7 @@
     document.getElementById('inp-date').value = state._date || todayStr();
     document.getElementById('inp-note').value = state._note || '';
 
+    document.getElementById('btn-logout').onclick = handleLogout;
     document.getElementById('tab-main').onclick = function () { state.screen = 'main'; render(); };
     document.getElementById('tab-shared').onclick = function () { state.screen = 'shared'; state.error=''; state.info=''; render(); };
 
@@ -401,30 +510,36 @@
     state._type = 'alacak'; state._party = ''; state._amount = ''; state._date = todayStr(); state._note = '';
   }
 
-  function createAccount() {
+  // ---------------- Mutations (now talking to Supabase) ----------------
+
+  async function createAccount() {
     var amt = parseAmountValue(state._amount || '');
     var party = (state._party || '').trim();
     if (!party) { state.error = 'Kişi veya şirket adını gir.'; render(); return; }
     if (!amt || amt <= 0) { state.error = 'Geçerli bir tutar gir.'; render(); return; }
     state.error = ''; state.info = '';
 
-    var acc = {
-      id: uid(), party: party, type: state._type, createdAt: Date.now(),
-      hareketler: [{
-        id: uid(), kind: 'is', amount: amt, date: state._date || todayStr(),
-        note: (state._note || '').trim(), createdAt: Date.now()
-      }]
-    };
-    state.accounts = [acc].concat(state.accounts);
-    saveAccounts(state.accounts);
+    var userId = state.session.user.id;
+    var accRes = await sb.from('accounts').insert({ party: party, type: state._type, user_id: userId }).select().single();
+    if (accRes.error) { state.error = 'Hesap oluşturulamadı: ' + accRes.error.message; render(); return; }
+
+    var txRes = await sb.from('transactions').insert({
+      account_id: accRes.data.id, user_id: userId, kind: 'is', amount: amt,
+      date: state._date || todayStr(), note: (state._note || '').trim()
+    }).select().single();
+    if (txRes.error) { state.error = 'İlk hareket eklenemedi: ' + txRes.error.message; render(); return; }
+
+    var newAcc = mapAccountRow(accRes.data, [txRes.data]);
+    state.accounts = [newAcc].concat(state.accounts);
     resetAccountForm();
-    state.expandedId = acc.id;
+    state.expandedId = newAcc.id;
     render();
   }
 
-  function deleteAccount(id) {
+  async function deleteAccount(id) {
+    var res = await sb.from('accounts').delete().eq('id', id);
+    if (res.error) { state.error = 'Hesap silinemedi: ' + res.error.message; render(); return; }
     state.accounts = state.accounts.filter(function (a) { return a.id !== id; });
-    saveAccounts(state.accounts);
     if (state.expandedId === id) state.expandedId = null;
     render();
   }
@@ -457,7 +572,7 @@
     render();
   }
 
-  function saveHareket() {
+  async function saveHareket() {
     var amt = parseAmountValue(state._hAmount || '');
     if (!amt || amt <= 0) { state.error = 'Geçerli bir tutar gir.'; render(); return; }
     state.error = '';
@@ -466,30 +581,37 @@
     if (!acc) return;
 
     if (state.editingHareket) {
+      var upd = await sb.from('transactions').update({
+        amount: amt, date: state._hDate || todayStr(), note: (state._hNote || '').trim()
+      }).eq('id', state.editingHareket).select().single();
+      if (upd.error) { state.error = 'Güncellenemedi: ' + upd.error.message; render(); return; }
       acc.hareketler = acc.hareketler.map(function (h) {
-        if (h.id !== state.editingHareket) return h;
-        return { id: h.id, kind: h.kind, amount: amt, date: state._hDate || todayStr(), note: (state._hNote || '').trim(), createdAt: h.createdAt };
+        return h.id === state.editingHareket ? mapTransactionRow(upd.data) : h;
       });
       state.info = 'Hareket güncellendi.';
     } else {
-      acc.hareketler = (acc.hareketler || []).concat([{
-        id: uid(), kind: state.hareketFormKind, amount: amt, date: state._hDate || todayStr(),
-        note: (state._hNote || '').trim(), createdAt: Date.now()
-      }]);
+      var ins = await sb.from('transactions').insert({
+        account_id: accId, user_id: state.session.user.id, kind: state.hareketFormKind,
+        amount: amt, date: state._hDate || todayStr(), note: (state._hNote || '').trim()
+      }).select().single();
+      if (ins.error) { state.error = 'Eklenemedi: ' + ins.error.message; render(); return; }
+      acc.hareketler = (acc.hareketler || []).concat([mapTransactionRow(ins.data)]);
       state.info = '';
     }
-    saveAccounts(state.accounts);
     state.hareketFormFor = null; state.editingHareket = null;
     render();
   }
 
-  function deleteHareket(accId, hId) {
+  async function deleteHareket(accId, hId) {
+    var res = await sb.from('transactions').delete().eq('id', hId);
+    if (res.error) { state.error = 'Silinemedi: ' + res.error.message; render(); return; }
     var acc = state.accounts.find(function (a) { return a.id === accId; });
     if (!acc) return;
     acc.hareketler = (acc.hareketler || []).filter(function (h) { return h.id !== hId; });
-    saveAccounts(state.accounts);
     render();
   }
+
+  // ---------------- Backup export / import / restore ----------------
 
   function toFriendlyPayload(accounts) {
     return {
@@ -522,7 +644,6 @@
     if (!Array.isArray(rawList)) throw new Error('format');
     var baseTime = Date.now();
     return rawList.map(function (a, ai) {
-      var isFriendly = a.hesaplar === undefined && (a.kisiSirket !== undefined || a.tur !== undefined && a.party === undefined);
       var party = a.party !== undefined ? String(a.party || '') : String(a.kisiSirket || '');
       var rawType = a.type !== undefined ? a.type : a.tur;
       var type = (rawType === 'verecek' || rawType === 'Verecek') ? 'verecek' : 'alacak';
@@ -599,41 +720,61 @@
     return h.kind + '|' + h.amount + '|' + h.date + '|' + (h.note || '');
   }
 
-  function restoreOwnData(txt) {
+  async function restoreOwnData(txt) {
     if (!txt || !txt.trim()) { state.error = 'Önce bir dosya seç ya da yedek metnini yapıştır.'; render(); return; }
+    var incoming;
     try {
-      var parsed = JSON.parse(txt);
-      var incoming = fromFriendlyOrRawPayload(parsed);
-      var addedAccounts = 0, addedHareket = 0;
-
-      incoming.forEach(function (incAcc) {
-        var existing = state.accounts.find(function (a) { return accountsAreSame(a, incAcc); });
-        if (!existing) {
-          state.accounts = [incAcc].concat(state.accounts);
-          addedAccounts++;
-          addedHareket += incAcc.hareketler.length;
-        } else {
-          var existingSigs = existing.hareketler.map(hareketSignature);
-          incAcc.hareketler.forEach(function (h) {
-            var sig = hareketSignature(h);
-            if (existingSigs.indexOf(sig) === -1) {
-              existing.hareketler.push(h);
-              existingSigs.push(sig);
-              addedHareket++;
-            }
-          });
-        }
-      });
-
-      saveAccounts(state.accounts);
-      state.error = '';
-      state.info = addedAccounts + ' yeni hesap, ' + addedHareket + ' hareket geri yüklendi.';
-      state.restorePanelOpen = false;
-      render();
+      incoming = fromFriendlyOrRawPayload(JSON.parse(txt));
     } catch (e) {
       state.error = 'Dosya okunamadı. Doğru yedek dosyası (.json) olduğundan emin ol.';
       render();
+      return;
     }
+
+    var userId = state.session.user.id;
+    var addedAccounts = 0, addedHareket = 0;
+
+    for (var i = 0; i < incoming.length; i++) {
+      var incAcc = incoming[i];
+      var existing = state.accounts.find(function (a) { return accountsAreSame(a, incAcc); });
+
+      if (!existing) {
+        var accRes = await sb.from('accounts').insert({ party: incAcc.party, type: incAcc.type, user_id: userId }).select().single();
+        if (accRes.error) { state.error = 'Geri yükleme hatası: ' + accRes.error.message; render(); return; }
+        var txRows = [];
+        for (var j = 0; j < incAcc.hareketler.length; j++) {
+          var h = incAcc.hareketler[j];
+          var txRes = await sb.from('transactions').insert({
+            account_id: accRes.data.id, user_id: userId, kind: h.kind, amount: h.amount, date: h.date, note: h.note
+          }).select().single();
+          if (!txRes.error) txRows.push(txRes.data);
+        }
+        state.accounts = [mapAccountRow(accRes.data, txRows)].concat(state.accounts);
+        addedAccounts++;
+        addedHareket += txRows.length;
+      } else {
+        var existingSigs = existing.hareketler.map(hareketSignature);
+        for (var k = 0; k < incAcc.hareketler.length; k++) {
+          var hh = incAcc.hareketler[k];
+          var sig = hareketSignature(hh);
+          if (existingSigs.indexOf(sig) === -1) {
+            var insRes = await sb.from('transactions').insert({
+              account_id: existing.id, user_id: userId, kind: hh.kind, amount: hh.amount, date: hh.date, note: hh.note
+            }).select().single();
+            if (!insRes.error) {
+              existing.hareketler.push(mapTransactionRow(insRes.data));
+              existingSigs.push(sig);
+              addedHareket++;
+            }
+          }
+        }
+      }
+    }
+
+    state.error = '';
+    state.info = addedAccounts + ' yeni hesap, ' + addedHareket + ' hareket geri yüklendi.';
+    state.restorePanelOpen = false;
+    render();
   }
 
   var fileInputMode = 'shared';
@@ -650,5 +791,26 @@
     fileInput.value = '';
   });
 
-  render();
+  // ---------------- Boot ----------------
+
+  (async function init() {
+    render(); // shows a lightweight loading/auth screen immediately
+    var sessionRes = await sb.auth.getSession();
+    state.session = sessionRes.data.session;
+    if (state.session) {
+      await fetchAllData();
+    } else {
+      state.dataLoading = false;
+      render();
+    }
+
+    sb.auth.onAuthStateChange(function (event, session) {
+      state.session = session;
+      if (session && state.accounts.length === 0 && !state.dataLoading) {
+        fetchAllData();
+      } else {
+        render();
+      }
+    });
+  })();
 })();
