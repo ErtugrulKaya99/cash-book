@@ -876,16 +876,9 @@
   // ---------------- Boot ----------------
 
   (async function init() {
-    render(); // shows a lightweight loading/auth screen immediately
-    var sessionRes = await sb.auth.getSession();
-    state.session = sessionRes.data.session;
-    if (state.session) {
-      await fetchAllData();
-    } else {
-      state.dataLoading = false;
-      render();
-    }
-
+    // Subscribe FIRST, synchronously, before any await — otherwise we can
+    // miss the PASSWORD_RECOVERY event that fires while Supabase parses
+    // the recovery token from the URL right after the page loads.
     sb.auth.onAuthStateChange(function (event, session) {
       if (event === 'PASSWORD_RECOVERY') {
         state.passwordRecoveryMode = true;
@@ -893,12 +886,30 @@
         render();
         return;
       }
+      if (state.passwordRecoveryMode) return; // don't let other events interrupt the reset screen
       state.session = session;
-      if (session && state.accounts.length === 0 && !state.dataLoading && !state.passwordRecoveryMode) {
-        fetchAllData();
+      if (session) {
+        if (!state.dataLoading && state.accounts.length === 0) {
+          fetchAllData();
+        } else if (!state.dataLoading) {
+          render();
+        }
       } else {
         render();
       }
     });
+
+    render(); // shows a lightweight loading/auth screen immediately
+
+    var sessionRes = await sb.auth.getSession();
+    if (state.passwordRecoveryMode) return; // already handled by the recovery event above
+
+    state.session = sessionRes.data.session;
+    if (state.session) {
+      await fetchAllData();
+    } else {
+      state.dataLoading = false;
+      render();
+    }
   })();
 })();
