@@ -62,6 +62,8 @@
     session: null,
     authScreen: 'login',
     authEmail: '', authPassword: '', authError: '', authBusy: false,
+    forgotEmail: '', forgotBusy: false, forgotSent: false, forgotError: '',
+    passwordRecoveryMode: false, newPassword: '', resetBusy: false, resetError: '', resetDone: false,
     dataLoading: true,
 
     screen: 'main',
@@ -131,17 +133,92 @@
         '<div class="field"><label>E-posta</label><input id="auth-email" type="email" placeholder="ornek@eposta.com"></div>' +
         '<div class="field"><label>Şifre</label><input id="auth-password" type="password" placeholder="En az 6 karakter"></div>' +
         (state.authError ? '<div class="err-msg">' + escapeHtml(state.authError) + '</div>' : '') +
+        (state.info ? '<div class="ok-msg">' + escapeHtml(state.info) + '</div>' : '') +
         '<button class="add-btn" id="btn-auth-submit">' + (state.authBusy ? 'Bekleyin...' : (isLogin ? 'Giriş Yap' : 'Kayıt Ol')) + '</button>' +
+        (isLogin ? '<div class="cancel-link" id="link-forgot">Şifremi Unuttum</div>' : '') +
         (!isLogin ? '<div class="install-hint">Kayıt olduktan sonra e-postana gelen onay linkine tıklaman gerekebilir.</div>' : '') +
       '</div></div>';
 
-    document.getElementById('tab-login').onclick = function () { state.authScreen = 'login'; state.authError = ''; render(); };
-    document.getElementById('tab-signup').onclick = function () { state.authScreen = 'signup'; state.authError = ''; render(); };
+    document.getElementById('tab-login').onclick = function () { state.authScreen = 'login'; state.authError = ''; state.info = ''; render(); };
+    document.getElementById('tab-signup').onclick = function () { state.authScreen = 'signup'; state.authError = ''; state.info = ''; render(); };
     document.getElementById('auth-email').value = state.authEmail;
     document.getElementById('auth-password').value = state.authPassword;
     document.getElementById('auth-email').oninput = function (ev) { state.authEmail = ev.target.value; };
     document.getElementById('auth-password').oninput = function (ev) { state.authPassword = ev.target.value; };
     document.getElementById('btn-auth-submit').onclick = isLogin ? handleLogin : handleSignup;
+    var forgotLink = document.getElementById('link-forgot');
+    if (forgotLink) {
+      forgotLink.onclick = function () {
+        state.authScreen = 'forgot';
+        state.forgotEmail = state.authEmail;
+        state.forgotError = ''; state.forgotSent = false; state.info = '';
+        render();
+      };
+    }
+  }
+
+  function renderForgotScreen() {
+    root.innerHTML =
+      '<div class="auth-wrap"><div class="auth-card">' +
+        '<div class="auth-title">Şifremi Unuttum</div>' +
+        '<div class="auth-subtitle">E-posta adresini gir, sana bir sıfırlama linki gönderelim.</div>' +
+        (state.forgotSent
+          ? '<div class="ok-msg">Sıfırlama linki gönderildi. E-postanı kontrol et.</div>' +
+            '<div class="cancel-link" id="link-back-login">Giriş ekranına dön</div>'
+          : (
+              '<div class="field"><label>E-posta</label><input id="forgot-email" type="email" placeholder="ornek@eposta.com"></div>' +
+              (state.forgotError ? '<div class="err-msg">' + escapeHtml(state.forgotError) + '</div>' : '') +
+              '<button class="add-btn" id="btn-forgot-submit">' + (state.forgotBusy ? 'Bekleyin...' : 'Sıfırlama Linki Gönder') + '</button>' +
+              '<div class="cancel-link" id="link-back-login">Vazgeç, giriş ekranına dön</div>'
+            )
+        ) +
+      '</div></div>';
+
+    var backLink = document.getElementById('link-back-login');
+    if (backLink) backLink.onclick = function () { state.authScreen = 'login'; state.authError = ''; render(); };
+
+    var emailInput = document.getElementById('forgot-email');
+    if (emailInput) {
+      emailInput.value = state.forgotEmail;
+      emailInput.oninput = function (ev) { state.forgotEmail = ev.target.value; };
+      document.getElementById('btn-forgot-submit').onclick = handleForgotPassword;
+    }
+  }
+
+  function renderResetPasswordScreen() {
+    root.innerHTML =
+      '<div class="auth-wrap"><div class="auth-card">' +
+        '<div class="auth-title">Yeni Şifre Belirle</div>' +
+        '<div class="auth-subtitle">Hesabın için yeni bir şifre gir.</div>' +
+        '<div class="field"><label>Yeni Şifre</label><input id="reset-password" type="password" placeholder="En az 6 karakter"></div>' +
+        (state.resetError ? '<div class="err-msg">' + escapeHtml(state.resetError) + '</div>' : '') +
+        '<button class="add-btn" id="btn-reset-submit">' + (state.resetBusy ? 'Bekleyin...' : 'Şifreyi Güncelle') + '</button>' +
+      '</div></div>';
+
+    document.getElementById('reset-password').oninput = function (ev) { state.newPassword = ev.target.value; };
+    document.getElementById('btn-reset-submit').onclick = handleResetPassword;
+  }
+
+  async function handleForgotPassword() {
+    if (!state.forgotEmail) { state.forgotError = 'E-posta adresini gir.'; render(); return; }
+    state.forgotBusy = true; state.forgotError = ''; render();
+    var res = await sb.auth.resetPasswordForEmail(state.forgotEmail, { redirectTo: window.location.origin });
+    state.forgotBusy = false;
+    if (res.error) { state.forgotError = res.error.message; render(); return; }
+    state.forgotSent = true;
+    render();
+  }
+
+  async function handleResetPassword() {
+    if (!state.newPassword || state.newPassword.length < 6) { state.resetError = 'Şifre en az 6 karakter olmalı.'; render(); return; }
+    state.resetBusy = true; state.resetError = ''; render();
+    var res = await sb.auth.updateUser({ password: state.newPassword });
+    state.resetBusy = false;
+    if (res.error) { state.resetError = res.error.message; render(); return; }
+    state.passwordRecoveryMode = false;
+    state.newPassword = '';
+    state.info = 'Şifren güncellendi.';
+    await fetchAllData();
   }
 
   async function handleLogin() {
@@ -215,7 +292,12 @@
   // ---------------- Render ----------------
 
   function render() {
-    if (!state.session) { renderAuthScreen(); return; }
+    if (state.passwordRecoveryMode) { renderResetPasswordScreen(); return; }
+    if (!state.session) {
+      if (state.authScreen === 'forgot') { renderForgotScreen(); return; }
+      renderAuthScreen();
+      return;
+    }
     if (state.dataLoading) { root.innerHTML = '<div class="auth-wrap"><div class="auth-loading">Yükleniyor...</div></div>'; return; }
     if (state.screen === 'shared') { renderSharedScreen(); return; }
     renderMainScreen();
@@ -805,8 +887,14 @@
     }
 
     sb.auth.onAuthStateChange(function (event, session) {
+      if (event === 'PASSWORD_RECOVERY') {
+        state.passwordRecoveryMode = true;
+        state.session = session;
+        render();
+        return;
+      }
       state.session = session;
-      if (session && state.accounts.length === 0 && !state.dataLoading) {
+      if (session && state.accounts.length === 0 && !state.dataLoading && !state.passwordRecoveryMode) {
         fetchAllData();
       } else {
         render();
