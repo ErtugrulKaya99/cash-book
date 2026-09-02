@@ -58,6 +58,21 @@
   }
   function uid() { return Date.now().toString(36) + Math.random().toString(36).slice(2,6); }
 
+  // window.location.origin alone drops the folder path (e.g. "/cash-book/"),
+  // which breaks GitHub Pages project sites. This keeps the folder intact,
+  // whether or not the URL happens to end in a trailing slash.
+  function getBaseUrl() {
+    var path = window.location.pathname;
+    var lastSlash = path.lastIndexOf('/');
+    var lastSegment = path.substring(lastSlash + 1);
+    if (lastSegment.indexOf('.') !== -1) {
+      path = path.substring(0, lastSlash + 1); // strip a trailing filename like index.html
+    } else if (!path.endsWith('/')) {
+      path = path + '/'; // e.g. ".../cash-book" -> ".../cash-book/"
+    }
+    return window.location.origin + path;
+  }
+
   var state = {
     session: null,
     authScreen: 'login',
@@ -74,6 +89,7 @@
     hareketFormFor: null,
     hareketFormKind: null,
     editingHareket: null,
+    restorePanelOpen: false,
     error: '', info: '',
     _type: 'alacak', _party: '', _amount: '', _date: todayStr(), _note: '',
     _hAmount: '', _hDate: todayStr(), _hNote: ''
@@ -202,7 +218,7 @@
   async function handleForgotPassword() {
     if (!state.forgotEmail) { state.forgotError = 'E-posta adresini gir.'; render(); return; }
     state.forgotBusy = true; state.forgotError = ''; render();
-    var res = await sb.auth.resetPasswordForEmail(state.forgotEmail, { redirectTo: window.location.origin });
+    var res = await sb.auth.resetPasswordForEmail(state.forgotEmail, { redirectTo: getBaseUrl() });
     state.forgotBusy = false;
     if (res.error) { state.forgotError = res.error.message; render(); return; }
     state.forgotSent = true;
@@ -235,7 +251,7 @@
     if (!state.authEmail || !state.authPassword) { state.authError = 'E-posta ve şifre gir.'; render(); return; }
     if (state.authPassword.length < 6) { state.authError = 'Şifre en az 6 karakter olmalı.'; render(); return; }
     state.authBusy = true; state.authError = ''; render();
-    var res = await sb.auth.signUp({ email: state.authEmail, password: state.authPassword });
+    var res = await sb.auth.signUp({ email: state.authEmail, password: state.authPassword, options: { emailRedirectTo: getBaseUrl() } });
     state.authBusy = false;
     if (res.error) { state.authError = res.error.message; render(); return; }
     if (res.data.session) {
