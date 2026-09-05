@@ -58,6 +58,14 @@
   }
   function uid() { return Date.now().toString(36) + Math.random().toString(36).slice(2,6); }
 
+  // Standard PDF fonts don't support Turkish-specific letters (ğ, ı, ş, İ, ...).
+  // We keep the on-screen app fully Turkish and only transliterate text that
+  // goes into the exported PDF, so it always renders legibly.
+  var TR_MAP = { 'ç':'c','Ç':'C','ğ':'g','Ğ':'G','ı':'i','İ':'I','ö':'o','Ö':'O','ş':'s','Ş':'S','ü':'u','Ü':'U' };
+  function toPdfSafe(str) {
+    return String(str == null ? '' : str).replace(/[çÇğĞıİöÖşŞüÜ]/g, function (c) { return TR_MAP[c] || c; });
+  }
+
   // window.location.origin alone drops the folder path (e.g. "/cash-book/"),
   // which breaks GitHub Pages project sites. This keeps the folder intact,
   // whether or not the URL happens to end in a trailing slash.
@@ -424,6 +432,7 @@
 
       var manageHtml = editable ?
         '<div class="acc-manage">' +
+          '<span id="btn-pdf-' + acc.id + '" data-pdf="' + acc.id + '">&#128196; PDF İndir</span>' +
           '<span class="danger-link" data-delacc="' + acc.id + '">Hesabı Sil</span>' +
         '</div>' : '';
 
@@ -587,6 +596,9 @@
     });
     root.querySelectorAll('[data-delacc]').forEach(function (el) {
       el.onclick = function (ev) { ev.stopPropagation(); deleteAccount(el.getAttribute('data-delacc')); };
+    });
+    root.querySelectorAll('[data-pdf]').forEach(function (el) {
+      el.onclick = function (ev) { ev.stopPropagation(); exportAccountPDF(el.getAttribute('data-pdf')); };
     });
     root.querySelectorAll('[data-hdel]').forEach(function (el) {
       el.onclick = function (ev) { ev.stopPropagation(); deleteHareket(el.getAttribute('data-hacc'), el.getAttribute('data-hdel')); };
@@ -782,6 +794,56 @@
   }
 
   // ---------------- Backup export / import / restore ----------------
+
+  function exportAccountPDF(accId) {
+    var acc = state.accounts.find(function (a) { return a.id === accId; });
+    if (!acc) return;
+    if (!window.jspdf || !window.jspdf.jsPDF) {
+      state.error = 'PDF oluşturucu yüklenemedi. İnternet bağlantını kontrol edip tekrar dene.';
+      render();
+      return;
+    }
+
+    var t = accTotals(acc);
+    var doc = new window.jspdf.jsPDF();
+
+    doc.setFontSize(16);
+    doc.text(toPdfSafe('Cari Hesap Dokumu'), 14, 18);
+
+    doc.setFontSize(11);
+    doc.text(toPdfSafe('Kisi / Sirket: ' + acc.party), 14, 28);
+    doc.text(toPdfSafe('Tur: ' + (acc.type === 'alacak' ? 'Alacak (Bana Borclu)' : 'Verecek (Ben Borcluyum)')), 14, 35);
+    doc.text(toPdfSafe('Rapor Tarihi: ' + formatDateDisplay(todayStr())), 14, 42);
+
+    doc.setFontSize(11);
+    var statLabel1 = acc.type === 'alacak' ? 'Toplam Alinacak' : 'Toplam Verilecek';
+    var statLabel2 = acc.type === 'alacak' ? 'Alinan' : 'Verilen';
+    doc.text(toPdfSafe(statLabel1 + ': ' + formatTL(t.toplam) + '   ' + statLabel2 + ': ' + formatTL(t.alinan) + '   Kalan: ' + formatTL(t.kalan)), 14, 51);
+
+    var rows = (acc.hareketler || []).slice().sort(function (a, b) {
+      return (a.date + a.createdAt) > (b.date + b.createdAt) ? 1 : -1;
+    }).map(function (h) {
+      return [
+        formatDateDisplay(h.date),
+        h.kind === 'is' ? 'Is/Borc' : 'Odeme',
+        (h.kind === 'is' ? '+' : '-') + formatTL(h.amount),
+        h.dueDate ? formatDateDisplay(h.dueDate) : '-',
+        toPdfSafe(h.note || '')
+      ];
+    });
+
+    doc.autoTable({
+      startY: 58,
+      head: [['Tarih', 'Tur', 'Tutar', 'Vade', 'Not']],
+      body: rows,
+      styles: { fontSize: 9, cellPadding: 3 },
+      headStyles: { fillColor: [140, 109, 31], textColor: [255, 247, 232] },
+      columnStyles: { 4: { cellWidth: 60 } }
+    });
+
+    var safeParty = acc.party.replace(/[^a-zA-Z0-9]+/g, '-').toLowerCase();
+    doc.save('hesap-dokumu-' + safeParty + '-' + todayStr() + '.pdf');
+  }
 
   function toFriendlyPayload(accounts) {
     return {
