@@ -1,4 +1,4 @@
-  :root {
+:root {
     --bg: #14181B; --paper: #F6F2EA; --paper-line: #E3DCCB; --ink: #1F2422; --ink-soft: #5B6360;
     --accent: #C9A24B; --accent-deep: #8C6D1F; --danger: #B4453A; --ok: #3E6E5E; --radius: 14px;
     --mono: 'SF Mono', 'Menlo', 'Consolas', monospace;
@@ -146,3 +146,13 @@
   .search-input:focus { border-color: var(--accent-deep); }
   .filter-controls { display:flex; gap:6px; }
   .filter-controls select { background:#1E2427; color:var(--paper); border:1px solid #2A3134; border-radius:6px; font-size:11px; padding:3px 6px; }
+
+  /* --- Due date tracking --- */
+  .overdue-banner {
+    background: rgba(180,69,58,0.15); border:1px solid rgba(180,69,58,0.4); color:#D98A7C;
+    border-radius:8px; padding:8px 12px; font-size:12px; font-weight:600; margin-bottom:14px; text-align:center;
+  }
+  .overdue-dot { color:#D98A7C; }
+  .h-due { font-size:10.5px; margin-top:3px; color:#7C8480; }
+  .h-due.overdue { color:#D98A7C; font-weight:700; }
+  .mf-due-label { display:block; font-size:10.5px; color:#8B948F; text-transform:uppercase; letter-spacing:0.4px; margin:2px 0 4px 0; }
