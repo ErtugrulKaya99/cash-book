@@ -93,8 +93,8 @@
     editingHareket: null,
     restorePanelOpen: false,
     error: '', info: '',
-    _type: 'alacak', _party: '', _amount: '', _date: todayStr(), _note: '',
-    _hAmount: '', _hDate: todayStr(), _hNote: ''
+    _type: 'alacak', _party: '', _amount: '', _date: todayStr(), _note: '', _dueDate: '',
+    _hAmount: '', _hDate: todayStr(), _hNote: '', _hDueDate: ''
   };
 
   var root = document.getElementById('app-root');
@@ -109,6 +109,7 @@
       amount: Number(t.amount),
       date: t.date,
       note: t.note || '',
+      dueDate: t.due_date || null,
       createdAt: new Date(t.created_at).getTime()
     };
   }
@@ -291,6 +292,15 @@
     return list.reduce(function (m, h) { return Math.max(m, h.createdAt || 0); }, 0);
   }
 
+  function hasOverdue(acc) {
+    var t = accTotals(acc);
+    if (t.kalan <= 0) return false;
+    var today = todayStr();
+    return (acc.hareketler || []).some(function (h) {
+      return h.kind === 'is' && h.dueDate && h.dueDate < today;
+    });
+  }
+
   function getFilteredAccounts() {
     var list = state.accounts.slice();
     if (state.filterType !== 'all') list = list.filter(function (a) { return a.type === state.filterType; });
@@ -333,18 +343,24 @@
     renderMainScreen();
   }
 
-  function renderHareketRow(h, accId, editable) {
+  function renderHareketRow(h, accId, editable, accountOwesMore) {
     var isKind = h.kind === 'is';
     var badge = isKind ? '<span class="h-badge is">İş / Borç</span>' : '<span class="h-badge odeme">Ödeme</span>';
     var sign = isKind ? '+' : '-';
     var noteHtml = h.note ? '<div class="h-note">' + escapeHtml(h.note) + '</div>' : '';
+    var dueHtml = '';
+    if (isKind && h.dueDate) {
+      var isOverdue = accountOwesMore && h.dueDate < todayStr();
+      dueHtml = '<div class="h-due ' + (isOverdue ? 'overdue' : '') + '">' +
+        (isOverdue ? '&#9888; Vadesi geçti: ' : 'Vade: ') + formatDateDisplay(h.dueDate) + '</div>';
+    }
     var actions = editable ?
       '<div class="h-actions">' +
         '<button class="h-edit" data-hedit="' + h.id + '" data-hacc="' + accId + '">düzenle</button>' +
         '<button class="h-del" data-hdel="' + h.id + '" data-hacc="' + accId + '">sil</button>' +
       '</div>' : '';
     return '<div class="hareket-row">' +
-      '<div class="h-left">' + badge + '<span class="h-date">' + formatDateDisplay(h.date) + '</span>' + noteHtml + actions + '</div>' +
+      '<div class="h-left">' + badge + '<span class="h-date">' + formatDateDisplay(h.date) + '</span>' + noteHtml + dueHtml + actions + '</div>' +
       '<div class="h-amt ' + (isKind ? 'is' : 'odeme') + '">' + sign + formatTL(h.amount) + '</div>' +
     '</div>';
   }
@@ -354,11 +370,12 @@
     var expanded = state.expandedId === acc.id;
     var kalanCls = t.kalan === 0 ? 'done' : acc.type;
     var kalanLabel = acc.type === 'alacak' ? 'Kalan Alacak' : 'Kalan Borç';
+    var overdue = hasOverdue(acc);
 
     var head =
       '<div class="acc-head" data-toggle="' + acc.id + '">' +
         '<div class="party-block">' +
-          '<div class="party-name">' + escapeHtml(acc.party) + '</div>' +
+          '<div class="party-name">' + (overdue ? '<span class="overdue-dot" title="Vadesi geçen ödeme var">&#9888;</span> ' : '') + escapeHtml(acc.party) + '</div>' +
           '<div class="party-badge ' + acc.type + '">' + (acc.type === 'alacak' ? 'Alacak' : 'Verecek') + '</div>' +
         '</div>' +
         '<div class="kalan-block">' +
@@ -377,7 +394,7 @@
       });
       var hareketHtml = hareketler.length === 0
         ? '<div class="empty" style="padding:14px 6px;">Henüz hareket yok.</div>'
-        : '<div class="hareket-list">' + hareketler.map(function (h) { return renderHareketRow(h, acc.id, editable); }).join('') + '</div>';
+        : '<div class="hareket-list">' + hareketler.map(function (h) { return renderHareketRow(h, acc.id, editable, t.kalan > 0); }).join('') + '</div>';
 
       var miniForm = '';
       if (editable && state.hareketFormFor === acc.id) {
@@ -390,6 +407,7 @@
             '<div class="mf-title">' + title + '</div>' +
             '<input id="mf-amount" type="text" inputmode="decimal" placeholder="Tutar">' +
             '<input id="mf-date" type="date">' +
+            (isKind ? '<label class="mf-due-label">Vade Tarihi (opsiyonel)</label><input id="mf-due" type="date">' : '') +
             '<textarea id="mf-note" rows="2" placeholder="' + (isKind ? 'Hangi iş için? (ör: Temmuz ayı montaj işi)' : 'Not (ör: ilk ödeme, nakit)') + '"></textarea>' +
             '<div class="mf-btns">' +
               '<button class="mf-secondary" id="mf-cancel">İptal</button>' +
@@ -429,10 +447,15 @@
     var displayDate = new Date().toLocaleDateString('tr-TR', { day: 'numeric', month: 'long', year: 'numeric' });
     var accounts = getFilteredAccounts();
     var gs = globalSummary(state.accounts);
+    var overdueCount = state.accounts.filter(hasOverdue).length;
 
     var hintHtml = isStandalone() ? '' :
       '<div class="install-hint"><b>İpucu:</b> Bu sayfayı ana ekranına ekleyip uygulama gibi kullanabilirsin. ' +
       'Safari\'de paylaş ikonuna dokun &rarr; "Ana Ekrana Ekle".</div>';
+
+    var overdueBannerHtml = overdueCount > 0
+      ? '<div class="overdue-banner">&#9888; ' + overdueCount + (overdueCount === 1 ? ' hesapta' : ' hesapta') + ' vadesi geçen ödeme var</div>'
+      : '';
 
     var cardsHtml = accounts.length === 0
       ? '<div class="empty">Henüz hesap yok. Yukarıdan yeni bir hesap oluştur.</div>'
@@ -447,6 +470,7 @@
           '<button id="tab-shared">Gelen Defter</button>' +
         '</div>' +
         hintHtml +
+        overdueBannerHtml +
         '<div class="summary-row">' +
           '<div class="summary-card alacak"><div class="label">Toplam Kalan Alacak</div><div class="value">' + formatTL(gs.alacakKalan) + '</div></div>' +
           '<div class="summary-card verecek"><div class="label">Toplam Kalan Borç</div><div class="value">' + formatTL(gs.verecekKalan) + '</div></div>' +
@@ -460,6 +484,7 @@
           '<div class="field"><label>Kişi / Şirket</label><input id="inp-party" type="text" placeholder="Örn: ABC İnşaat Ltd."></div>' +
           '<div class="field amount"><label>İlk Tutar</label><input id="inp-amount" type="text" inputmode="decimal" placeholder="0"></div>' +
           '<div class="field"><label>Tarih</label><input id="inp-date" type="date"></div>' +
+          '<div class="field"><label>Vade Tarihi (opsiyonel)</label><input id="inp-due" type="date"></div>' +
           '<div class="field"><label>Not (hangi iş için?)</label><textarea id="inp-note" rows="2" placeholder="Örn: Temmuz ayı yapılan montaj işi"></textarea></div>' +
         '</div>' +
         (state.error ? '<div class="err-msg">' + escapeHtml(state.error) + '</div>' : '') +
@@ -498,6 +523,7 @@
     document.getElementById('inp-party').value = state._party || '';
     document.getElementById('inp-amount').value = state._amount || '';
     document.getElementById('inp-date').value = state._date || todayStr();
+    document.getElementById('inp-due').value = state._dueDate || '';
     document.getElementById('inp-note').value = state._note || '';
 
     document.getElementById('btn-logout').onclick = handleLogout;
@@ -512,6 +538,7 @@
       ev.target.value = state._amount;
     };
     document.getElementById('inp-date').onchange = function (ev) { state._date = ev.target.value; };
+    document.getElementById('inp-due').onchange = function (ev) { state._dueDate = ev.target.value; };
     document.getElementById('inp-note').oninput = function (ev) { state._note = ev.target.value; };
     document.getElementById('btn-create-acc').onclick = createAccount;
     document.getElementById('btn-export').onclick = exportData;
@@ -576,6 +603,11 @@
       mfAmount.oninput = function (ev) { state._hAmount = formatAmountTyping(ev.target.value); ev.target.value = state._hAmount; };
       document.getElementById('mf-date').onchange = function (ev) { state._hDate = ev.target.value; };
       document.getElementById('mf-note').oninput = function (ev) { state._hNote = ev.target.value; };
+      var mfDue = document.getElementById('mf-due');
+      if (mfDue) {
+        mfDue.value = state._hDueDate || '';
+        mfDue.onchange = function (ev) { state._hDueDate = ev.target.value; };
+      }
       document.getElementById('mf-cancel').onclick = function (ev) { ev.stopPropagation(); closeHareketForm(); };
       document.getElementById('mf-save').onclick = function (ev) { ev.stopPropagation(); saveHareket(); };
     }
@@ -642,7 +674,7 @@
   }
 
   function resetAccountForm() {
-    state._type = 'alacak'; state._party = ''; state._amount = ''; state._date = todayStr(); state._note = '';
+    state._type = 'alacak'; state._party = ''; state._amount = ''; state._date = todayStr(); state._note = ''; state._dueDate = '';
   }
 
   // ---------------- Mutations (now talking to Supabase) ----------------
@@ -660,7 +692,7 @@
 
     var txRes = await sb.from('transactions').insert({
       account_id: accRes.data.id, user_id: userId, kind: 'is', amount: amt,
-      date: state._date || todayStr(), note: (state._note || '').trim()
+      date: state._date || todayStr(), note: (state._note || '').trim(), due_date: state._dueDate || null
     }).select().single();
     if (txRes.error) { state.error = 'İlk hareket eklenemedi: ' + txRes.error.message; render(); return; }
 
@@ -683,7 +715,7 @@
     state.hareketFormFor = accId;
     state.hareketFormKind = kind;
     state.editingHareket = null;
-    state._hAmount = ''; state._hDate = todayStr(); state._hNote = '';
+    state._hAmount = ''; state._hDate = todayStr(); state._hNote = ''; state._hDueDate = '';
     state.error = ''; state.info = '';
     render();
   }
@@ -704,6 +736,7 @@
     state._hAmount = formatAmountTyping(String(h.amount).replace('.', ','));
     state._hDate = h.date;
     state._hNote = h.note || '';
+    state._hDueDate = h.dueDate || '';
     render();
   }
 
@@ -717,7 +750,8 @@
 
     if (state.editingHareket) {
       var upd = await sb.from('transactions').update({
-        amount: amt, date: state._hDate || todayStr(), note: (state._hNote || '').trim()
+        amount: amt, date: state._hDate || todayStr(), note: (state._hNote || '').trim(),
+        due_date: state.hareketFormKind === 'is' ? (state._hDueDate || null) : null
       }).eq('id', state.editingHareket).select().single();
       if (upd.error) { state.error = 'Güncellenemedi: ' + upd.error.message; render(); return; }
       acc.hareketler = acc.hareketler.map(function (h) {
@@ -727,7 +761,8 @@
     } else {
       var ins = await sb.from('transactions').insert({
         account_id: accId, user_id: state.session.user.id, kind: state.hareketFormKind,
-        amount: amt, date: state._hDate || todayStr(), note: (state._hNote || '').trim()
+        amount: amt, date: state._hDate || todayStr(), note: (state._hNote || '').trim(),
+        due_date: state.hareketFormKind === 'is' ? (state._hDueDate || null) : null
       }).select().single();
       if (ins.error) { state.error = 'Eklenemedi: ' + ins.error.message; render(); return; }
       acc.hareketler = (acc.hareketler || []).concat([mapTransactionRow(ins.data)]);
@@ -766,6 +801,7 @@
               tur: h.kind === 'odeme' ? 'Ödeme' : 'İş/Borç',
               tutar: h.amount,
               tarih: h.date,
+              vadeTarihi: h.dueDate || null,
               not: h.note || ''
             };
           })
@@ -789,12 +825,14 @@
         var amount = h.amount !== undefined ? h.amount : h.tutar;
         var date = h.date !== undefined ? h.date : h.tarih;
         var note = h.note !== undefined ? h.note : h.not;
+        var dueDate = h.dueDate !== undefined ? h.dueDate : h.vadeTarihi;
         return {
           id: h.id || uid(),
           kind: kind,
           amount: Number(amount) || 0,
           date: date || todayStr(),
           note: note || '',
+          dueDate: dueDate || null,
           createdAt: h.createdAt || (baseTime + ai * 1000 + hi)
         };
       });
@@ -852,7 +890,7 @@
     return a.party.trim().toLowerCase() === b.party.trim().toLowerCase() && a.type === b.type;
   }
   function hareketSignature(h) {
-    return h.kind + '|' + h.amount + '|' + h.date + '|' + (h.note || '');
+    return h.kind + '|' + h.amount + '|' + h.date + '|' + (h.note || '') + '|' + (h.dueDate || '');
   }
 
   async function restoreOwnData(txt) {
@@ -880,7 +918,7 @@
         for (var j = 0; j < incAcc.hareketler.length; j++) {
           var h = incAcc.hareketler[j];
           var txRes = await sb.from('transactions').insert({
-            account_id: accRes.data.id, user_id: userId, kind: h.kind, amount: h.amount, date: h.date, note: h.note
+            account_id: accRes.data.id, user_id: userId, kind: h.kind, amount: h.amount, date: h.date, note: h.note, due_date: h.dueDate || null
           }).select().single();
           if (!txRes.error) txRows.push(txRes.data);
         }
@@ -894,7 +932,7 @@
           var sig = hareketSignature(hh);
           if (existingSigs.indexOf(sig) === -1) {
             var insRes = await sb.from('transactions').insert({
-              account_id: existing.id, user_id: userId, kind: hh.kind, amount: hh.amount, date: hh.date, note: hh.note
+              account_id: existing.id, user_id: userId, kind: hh.kind, amount: hh.amount, date: hh.date, note: hh.note, due_date: hh.dueDate || null
             }).select().single();
             if (!insRes.error) {
               existing.hareketler.push(mapTransactionRow(insRes.data));
