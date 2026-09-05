@@ -85,6 +85,8 @@
     accounts: [],
     sharedData: loadShared(),
     filterType: 'all',
+    searchQuery: '',
+    sortBy: 'recent',
     expandedId: null,
     hareketFormFor: null,
     hareketFormKind: null,
@@ -292,7 +294,19 @@
   function getFilteredAccounts() {
     var list = state.accounts.slice();
     if (state.filterType !== 'all') list = list.filter(function (a) { return a.type === state.filterType; });
-    list.sort(function (a, b) { return lastActivity(b) - lastActivity(a); });
+    if (state.searchQuery && state.searchQuery.trim()) {
+      var q = state.searchQuery.trim().toLocaleLowerCase('tr-TR');
+      list = list.filter(function (a) { return a.party.toLocaleLowerCase('tr-TR').indexOf(q) !== -1; });
+    }
+    if (state.sortBy === 'name') {
+      list.sort(function (a, b) { return a.party.localeCompare(b.party, 'tr-TR'); });
+    } else if (state.sortBy === 'kalan_desc') {
+      list.sort(function (a, b) { return accTotals(b).kalan - accTotals(a).kalan; });
+    } else if (state.sortBy === 'kalan_asc') {
+      list.sort(function (a, b) { return accTotals(a).kalan - accTotals(b).kalan; });
+    } else {
+      list.sort(function (a, b) { return lastActivity(b) - lastActivity(a); });
+    }
     return list;
   }
 
@@ -462,12 +476,21 @@
             '<textarea id="txt-restore" placeholder="...veya buraya yedek metnini yapıştır"></textarea>' +
             '<div class="btn-row"><button class="btn-primary" id="btn-restore-text">Kendi Hesaplarıma Geri Yükle</button></div>' +
           '</div>' : '') +
+        '<div class="search-row"><input id="inp-search" type="text" class="search-input" placeholder="&#128269; Kişi veya şirket ara..."></div>' +
         '<div class="section-title"><span>Hesaplar</span>' +
-          '<select id="sel-filter">' +
-            '<option value="all"' + (state.filterType==='all'?' selected':'') + '>Tümü</option>' +
-            '<option value="alacak"' + (state.filterType==='alacak'?' selected':'') + '>Alacaklar</option>' +
-            '<option value="verecek"' + (state.filterType==='verecek'?' selected':'') + '>Verecekler</option>' +
-          '</select>' +
+          '<div class="filter-controls">' +
+            '<select id="sel-sort">' +
+              '<option value="recent"' + (state.sortBy==='recent'?' selected':'') + '>Son Hareket</option>' +
+              '<option value="name"' + (state.sortBy==='name'?' selected':'') + '>İsme Göre (A-Z)</option>' +
+              '<option value="kalan_desc"' + (state.sortBy==='kalan_desc'?' selected':'') + '>Kalan (Yüksek&rarr;Düşük)</option>' +
+              '<option value="kalan_asc"' + (state.sortBy==='kalan_asc'?' selected':'') + '>Kalan (Düşük&rarr;Yüksek)</option>' +
+            '</select>' +
+            '<select id="sel-filter">' +
+              '<option value="all"' + (state.filterType==='all'?' selected':'') + '>Tümü</option>' +
+              '<option value="alacak"' + (state.filterType==='alacak'?' selected':'') + '>Alacaklar</option>' +
+              '<option value="verecek"' + (state.filterType==='verecek'?' selected':'') + '>Verecekler</option>' +
+            '</select>' +
+          '</div>' +
         '</div>' +
         cardsHtml +
       '</div>';
@@ -498,6 +521,20 @@
       render();
     };
     document.getElementById('sel-filter').onchange = function (ev) { state.filterType = ev.target.value; render(); };
+    var searchInput = document.getElementById('inp-search');
+    searchInput.value = state.searchQuery || '';
+    searchInput.oninput = function (ev) {
+      state.searchQuery = ev.target.value;
+      state._searchCursorPos = ev.target.selectionStart;
+      render();
+      var el = document.getElementById('inp-search');
+      if (el) {
+        el.focus();
+        var pos = state._searchCursorPos;
+        if (typeof pos === 'number') el.setSelectionRange(pos, pos);
+      }
+    };
+    document.getElementById('sel-sort').onchange = function (ev) { state.sortBy = ev.target.value; render(); };
 
     var pickRestoreBtn = document.getElementById('btn-pick-restore-file');
     if (pickRestoreBtn) {
