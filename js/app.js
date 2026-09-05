@@ -65,6 +65,12 @@
   function toPdfSafe(str) {
     return String(str == null ? '' : str).replace(/[çÇğĞıİöÖşŞüÜ]/g, function (c) { return TR_MAP[c] || c; });
   }
+  // The ₺ currency symbol isn't in the standard PDF font encoding either
+  // (renders as a stray "°"), so PDF text uses "TL" as a plain-text suffix instead.
+  function formatTLPdf(n) {
+    var num = Number(n) || 0;
+    return num.toLocaleString('tr-TR', { minimumFractionDigits: 0, maximumFractionDigits: 2 }) + ' TL';
+  }
 
   // window.location.origin alone drops the folder path (e.g. "/cash-book/"),
   // which breaks GitHub Pages project sites. This keeps the folder intact,
@@ -86,7 +92,7 @@
     authScreen: 'login',
     authEmail: '', authPassword: '', authError: '', authBusy: false,
     forgotEmail: '', forgotBusy: false, forgotSent: false, forgotError: '',
-    passwordRecoveryMode: false, newPassword: '', resetBusy: false, resetError: '', resetDone: false,
+    passwordRecoveryMode: false, newPassword: '', resetBusy: false, resetError: '',
     dataLoading: true,
 
     screen: 'main',
@@ -818,7 +824,7 @@
     doc.setFontSize(11);
     var statLabel1 = acc.type === 'alacak' ? 'Toplam Alinacak' : 'Toplam Verilecek';
     var statLabel2 = acc.type === 'alacak' ? 'Alinan' : 'Verilen';
-    doc.text(toPdfSafe(statLabel1 + ': ' + formatTL(t.toplam) + '   ' + statLabel2 + ': ' + formatTL(t.alinan) + '   Kalan: ' + formatTL(t.kalan)), 14, 51);
+    doc.text(toPdfSafe(statLabel1 + ': ' + formatTLPdf(t.toplam) + '   ' + statLabel2 + ': ' + formatTLPdf(t.alinan) + '   Kalan: ' + formatTLPdf(t.kalan)), 14, 51);
 
     var rows = (acc.hareketler || []).slice().sort(function (a, b) {
       return (a.date + a.createdAt) > (b.date + b.createdAt) ? 1 : -1;
@@ -826,7 +832,7 @@
       return [
         formatDateDisplay(h.date),
         h.kind === 'is' ? 'Is/Borc' : 'Odeme',
-        (h.kind === 'is' ? '+' : '-') + formatTL(h.amount),
+        (h.kind === 'is' ? '+' : '-') + formatTLPdf(h.amount),
         h.dueDate ? formatDateDisplay(h.dueDate) : '-',
         toPdfSafe(h.note || '')
       ];
