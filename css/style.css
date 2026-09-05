@@ -156,3 +156,6 @@
   .h-due { font-size:10.5px; margin-top:3px; color:#7C8480; }
   .h-due.overdue { color:#D98A7C; font-weight:700; }
   .mf-due-label { display:block; font-size:10.5px; color:#8B948F; text-transform:uppercase; letter-spacing:0.4px; margin:2px 0 4px 0; }
+
+  /* --- PDF export link (reuses acc-manage row spacing) --- */
+  .acc-manage span:not(.danger-link) { color:#8FBF9F; }
