@@ -6,7 +6,7 @@ Küçük işletmeler ve serbest çalışanlar için geliştirilmiş, mobil önce
 
 ## Özellikler
 
-- **Kullanıcı hesabı ve kimlik doğrulama** — e-posta/şifre ile kayıt olma, giriş yapma ve şifre sıfırlama (Supabase Auth)
+- **Kullanıcı hesabı ve kimlik doğrulama** — e-posta/şifre ile kayıt olma, giriş yapma ve şifre sıfırlama (Supabase Auth + özel SMTP)
 - **Çoklu cihaz senkronizasyonu** — aynı hesapla farklı cihazlardan giriş yapıp aynı verileri görme
 - **Satır bazlı güvenlik (Row Level Security)** — her kullanıcı yalnızca kendi kayıtlarına erişebilir, veritabanı seviyesinde garanti altına alınmıştır
 - **Cari hesap takibi** — her kişi/şirket için ayrı hesap, "Alacak" (bana borçlu) veya "Verecek" (ben borçluyum) olarak sınıflandırılır
@@ -21,6 +21,7 @@ Küçük işletmeler ve serbest çalışanlar için geliştirilmiş, mobil önce
 - Vanilla JavaScript (framework yok, sıfırdan state yönetimi)
 - HTML5 / CSS3
 - **Supabase** — PostgreSQL veritabanı, kimlik doğrulama (e-posta/şifre + şifre sıfırlama) ve Row Level Security
+- **Brevo (SMTP)** — kimlik doğrulama e-postalarının (kayıt onayı, şifre sıfırlama) sınırsız ve güvenilir şekilde gönderilmesi
 - Web Share API (dosya paylaşımı için)
 - GitHub Pages (statik barındırma)
 
@@ -68,7 +69,7 @@ cash-book/
 - [ ] Vade takibi ve uygulama içi hatırlatmalar
 - [ ] Arama ve gelişmiş sıralama
 - [ ] Hesap dökümünü PDF olarak dışa aktarma
-- [ ] Kendi SMTP sağlayıcısı ile e-posta gönderim limitini kaldırma
+- [x] Kendi SMTP sağlayıcısı ile e-posta gönderim limitini kaldırma
 
 ## Lisans
 
