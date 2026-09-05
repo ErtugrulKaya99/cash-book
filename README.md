@@ -12,6 +12,7 @@ Küçük işletmeler ve serbest çalışanlar için geliştirilmiş, mobil önce
 - **Cari hesap takibi** — her kişi/şirket için ayrı hesap, "Alacak" (bana borçlu) veya "Verecek" (ben borçluyum) olarak sınıflandırılır
 - **Hareket bazlı defter** — her hesaba birden fazla "iş/borç" ve "ödeme" kaydı eklenebilir; kalan tutar otomatik hesaplanır
 - **Kayıt düzenleme ve silme** — geçmiş hareketler sonradan düzeltilebilir
+- **Arama ve sıralama** — kişi/şirket adına göre anlık arama; son harekete, isme veya kalan tutara göre sıralama
 - **Yedekleme / geri yükleme** — tüm veriler okunabilir bir `.json` dosyası olarak dışa aktarılabilir ve aynı ya da başka bir hesaba geri yüklenebilir
 - **Salt okunur paylaşım ekranı** — başka birinin gönderdiği yedek dosyası, kendi kayıtlarına karışmadan ayrı bir ekranda görüntülenebilir
 - **Ana ekrana eklenebilir (PWA benzeri)** — Safari/Chrome üzerinden "Ana Ekrana Ekle" ile bağımsız bir uygulama gibi açılır
@@ -67,7 +68,7 @@ cash-book/
 - [x] Kullanıcı girişi ile temel güvenlik (e-posta/şifre + RLS)
 - [x] Şifremi unuttum / şifre sıfırlama akışı
 - [ ] Vade takibi ve uygulama içi hatırlatmalar
-- [ ] Arama ve gelişmiş sıralama
+- [x] Arama ve gelişmiş sıralama
 - [ ] Hesap dökümünü PDF olarak dışa aktarma
 - [x] Kendi SMTP sağlayıcısı ile e-posta gönderim limitini kaldırma
 
