@@ -14,6 +14,7 @@ Küçük işletmeler ve serbest çalışanlar için geliştirilmiş, mobil önce
 - **Kayıt düzenleme ve silme** — geçmiş hareketler sonradan düzeltilebilir
 - **Arama ve sıralama** — kişi/şirket adına göre anlık arama; son harekete, isme veya kalan tutara göre sıralama
 - **Vade takibi** — iş/borç kayıtlarına isteğe bağlı vade tarihi eklenebilir; süresi geçmiş ama ödenmemiş kayıtlar kırmızı bir uyarıyla işaretlenir ve üstte kısa bir özet gösterilir
+- **PDF hesap dökümü** — her hesap için kişi/şirket bilgisi, toplam/alınan/kalan tutarlar ve tüm hareketleri içeren, paylaşılabilir bir PDF belgesi indirilebilir
 - **Yedekleme / geri yükleme** — tüm veriler okunabilir bir `.json` dosyası olarak dışa aktarılabilir ve aynı ya da başka bir hesaba geri yüklenebilir
 - **Salt okunur paylaşım ekranı** — başka birinin gönderdiği yedek dosyası, kendi kayıtlarına karışmadan ayrı bir ekranda görüntülenebilir
 - **Ana ekrana eklenebilir (PWA benzeri)** — Safari/Chrome üzerinden "Ana Ekrana Ekle" ile bağımsız bir uygulama gibi açılır
@@ -24,6 +25,7 @@ Küçük işletmeler ve serbest çalışanlar için geliştirilmiş, mobil önce
 - HTML5 / CSS3
 - **Supabase** — PostgreSQL veritabanı, kimlik doğrulama (e-posta/şifre + şifre sıfırlama) ve Row Level Security
 - **Brevo (SMTP)** — kimlik doğrulama e-postalarının (kayıt onayı, şifre sıfırlama) sınırsız ve güvenilir şekilde gönderilmesi
+- **jsPDF + jsPDF-AutoTable** — hesap dökümlerinin PDF olarak dışa aktarılması
 - Web Share API (dosya paylaşımı için)
 - GitHub Pages (statik barındırma)
 
@@ -70,8 +72,13 @@ cash-book/
 - [x] Şifremi unuttum / şifre sıfırlama akışı
 - [x] Vade takibi ve uygulama içi hatırlatmalar
 - [x] Arama ve gelişmiş sıralama
-- [ ] Hesap dökümünü PDF olarak dışa aktarma
+- [x] Hesap dökümünü PDF olarak dışa aktarma
 - [x] Kendi SMTP sağlayıcısı ile e-posta gönderim limitini kaldırma
+
+### Gelecek Fikirleri
+- [ ] PIN / uygulama içi kısa şifre kilidi
+- [ ] Aylık/haftalık kazanç-borç trend grafiği
+- [ ] Özel domain bağlama
 
 ## Lisans
 
